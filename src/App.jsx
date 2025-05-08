@@ -111,6 +111,22 @@ function App() {
     localStorage.setItem('algo_problems', JSON.stringify(problems));
   }, [problems]);
 
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.data?.type === "ADD_PROBLEM") {
+        const problem = event.data.payload;
+        setProblems(prev => {
+          const updated = [...prev, problem];
+          localStorage.setItem("algo_problems", JSON.stringify(updated));
+          return updated;
+        });
+        toast.success("📥 외부에서 문제 추가됨");
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
   const addProblem = (problem) => {
     const today = new Date().toISOString().split('T')[0];
     const reviewDates = getNextReviewDates(today);
