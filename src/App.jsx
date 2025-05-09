@@ -1,4 +1,4 @@
-// App.jsx
+// App.jsx 개선 버전
 import React, { useEffect, useState, useMemo } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -55,30 +55,16 @@ const ProblemCard = ({ problem, onReview, onDelete }) => {
   );
 };
 
-// 추천 태그 분석 함수
-const getSmartRecommendation = (problems) => {
-  const tagStats = {};
-  problems.forEach(p => {
-    (p.tags || []).forEach(tag => {
-      if (!tagStats[tag]) tagStats[tag] = { total: 0, success: 0 };
-      p.reviewed?.forEach(r => {
-        tagStats[tag].total += 1;
-        if (r.success) tagStats[tag].success += 1;
-      });
-    });
+const getNextReviewDates = (startDate) => {
+  const base = new Date(startDate);
+  const offsets = [0, 1, 3, 7, 14];
+  return offsets.map(days => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
   });
-  const sorted = Object.entries(tagStats)
-    .filter(([_, stat]) => stat.total >= 3)
-    .sort((a, b) => (a[1].success / a[1].total) - (b[1].success / b[1].total));
-  if (sorted.length > 0) {
-    const [tag, stat] = sorted[0];
-    const rate = Math.round((stat.success / stat.total) * 100);
-    return `📌 ${tag} 태그의 복습 성공률이 ${rate}%로 낮습니다. 집중 복습을 추천합니다.`;
-  }
-  return '모든 태그의 복습 성공률이 양호합니다! 🎉';
 };
 
-// 스트릭 계산 함수
 const getStreak = (problems) => {
   const reviewedDates = new Set();
   problems.forEach(p => {
@@ -116,22 +102,22 @@ function App() {
       if (event.data?.type === "ADD_PROBLEM") {
         const problem = event.data.payload;
         setProblems(prev => {
-          const updated = [...prev, problem];
-          localStorage.setItem("algo_problems", JSON.stringify(updated));
+          const exists = prev.some(p => p.title === problem.title || p.url === problem.url);
+          if (exists) {
+            toast.error("⚠️ 이미 존재하는 문제입니다");
+            return prev;
+          }
+          const today = new Date().toISOString().split('T')[0];
+          const reviewDates = getNextReviewDates(today);
+          const updated = [...prev, { ...problem, id: Date.now(), reviews: reviewDates, reviewed: [] }];
+          toast.success("📥 외부에서 문제 추가됨");
           return updated;
         });
-        toast.success("📥 외부에서 문제 추가됨");
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
-
-  const addProblem = (problem) => {
-    const today = new Date().toISOString().split('T')[0];
-    const reviewDates = getNextReviewDates(today);
-    setProblems([...problems, { ...problem, id: Date.now(), reviews: reviewDates, reviewed: [] }]);
-  };
 
   const markReviewed = (id, success) => {
     const today = new Date().toISOString().split('T')[0];
@@ -153,46 +139,27 @@ function App() {
     setProblems(problems.filter(p => p.id !== id));
   };
 
-  const today = new Date().toISOString().split('T')[0];
-  const todayProblems = problems.filter(p => p.reviews.includes(today));
-
-  const sortedFilteredProblems = useMemo(() => {
-    let list = [...problems];
-    if (filterTag) list = list.filter(p => p.tags?.includes(filterTag));
-    if (sortKey === 'difficulty') list.sort((a, b) => a.difficulty.localeCompare(b.difficulty));
-    else if (sortKey === 'reviewCount') list.sort((a, b) => b.reviewed.length - a.reviewed.length);
-    else if (sortKey === 'nextReview') list.sort((a, b) => (a.reviews?.[0] || '').localeCompare(b.reviews?.[0] || ''));
-    return list;
-  }, [problems, sortKey, filterTag]);
-
-  const markedDates = useMemo(() => {
-    const map = {};
-    problems.forEach(p => {
-      (p.reviews || []).forEach(date => {
-        map[date] = (map[date] || 0) + 1;
-      });
-    });
-    return map;
-  }, [problems]);
-
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <Toaster position="top-center" />
       <h1 className="text-3xl font-bold mb-4">🧠 Algorithm Tracker</h1>
-
       <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
-        <p className="text-yellow-800 font-medium">🎯 추천: {getSmartRecommendation(problems)}</p>
-        <p className="text-yellow-800 font-medium mt-1">🔥 스트릭: {getStreak(problems)}일 연속 복습 중</p>
+        <p className="text-yellow-800 font-medium">🔥 스트릭: {getStreak(problems)}일 연속 복습 중</p>
       </div>
 
-      <ProblemForm onAdd={addProblem} />
+      <ProblemForm onAdd={(problem) => {
+        const today = new Date().toISOString().split('T')[0];
+        const reviewDates = getNextReviewDates(today);
+        setProblems(prev => [...prev, { ...problem, id: Date.now(), reviews: reviewDates, reviewed: [] }]);
+      }} />
 
       <div className="mb-6">
-        <h2 className="text-2xl font-semibold mb-2">📅 Today's Review ({todayProblems.length})</h2>
+        <h2 className="text-2xl font-semibold mb-2">📅 Today's Review ({problems.filter(p => p.reviews.includes(new Date().toISOString().split('T')[0])).length})</h2>
         <div className="grid gap-4">
-          {todayProblems.length > 0 ? todayProblems.map(p => (
-            <ProblemCard key={p.id} problem={p} onReview={markReviewed} onDelete={deleteProblem} />
-          )) : <p className="text-gray-600">No reviews scheduled for today.</p>}
+          {problems.filter(p => p.reviews.includes(new Date().toISOString().split('T')[0])).length > 0 ?
+            problems.filter(p => p.reviews.includes(new Date().toISOString().split('T')[0])).map(p => (
+              <ProblemCard key={p.id} problem={p} onReview={markReviewed} onDelete={deleteProblem} />
+            )) : <p className="text-gray-600">No reviews scheduled for today.</p>}
         </div>
       </div>
 
@@ -201,11 +168,10 @@ function App() {
         <Calendar
           onChange={setSelectedDate}
           value={selectedDate}
-          tileContent={({ date, view }) => {
+          tileContent={({ date }) => {
             const key = date.toISOString().split('T')[0];
-            return markedDates[key] ? (
-              <div className="text-xs text-center text-blue-600 font-bold">●</div>
-            ) : null;
+            const count = problems.reduce((acc, p) => acc + (p.reviews?.includes(key) ? 1 : 0), 0);
+            return count > 0 ? <div className="text-xs text-center text-blue-600 font-bold">●</div> : null;
           }}
         />
       </div>
@@ -246,22 +212,17 @@ function App() {
       </div>
 
       <div className="grid gap-4">
-        {sortedFilteredProblems.map(p => (
-          <ProblemCard key={p.id} problem={p} onReview={markReviewed} onDelete={deleteProblem} />
-        ))}
+        {useMemo(() => {
+          let list = [...problems];
+          if (filterTag) list = list.filter(p => p.tags?.includes(filterTag));
+          if (sortKey === 'difficulty') list.sort((a, b) => a.difficulty.localeCompare(b.difficulty));
+          else if (sortKey === 'reviewCount') list.sort((a, b) => b.reviewed.length - a.reviewed.length);
+          else if (sortKey === 'nextReview') list.sort((a, b) => (a.reviews?.[0] || '').localeCompare(b.reviews?.[0] || ''));
+          return list.map(p => <ProblemCard key={p.id} problem={p} onReview={markReviewed} onDelete={deleteProblem} />);
+        }, [problems, sortKey, filterTag])}
       </div>
     </div>
   );
 }
-
-const getNextReviewDates = (startDate) => {
-  const base = new Date(startDate);
-  const offsets = [0, 1, 3, 7, 14];
-  return offsets.map(days => {
-    const d = new Date(base);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
-  });
-};
 
 export default App;
