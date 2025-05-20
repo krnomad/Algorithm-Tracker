@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import { Toaster, toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import AnimatedBackground from './components/AnimatedBackground'; // Import AnimatedBackground
 
 // ProblemForm component is now in its own file: src/components/ProblemForm.jsx
 // ProblemCard component is now in its own file: src/components/ProblemCard.jsx
@@ -151,9 +152,11 @@ function App() {
 
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
-      <Toaster position="top-center" />
-      <h1 className="text-3xl font-bold mb-4 text-center sm:text-left">🧠 Algorithm Tracker</h1>
+    <> {/* Use Fragment to allow AnimatedBackground to be a sibling */}
+      <AnimatedBackground />
+      <div className="p-4 sm:p-6 max-w-4xl mx-auto relative z-10 bg-opacity-0"> {/* Ensure content is above background and transparent */}
+        <Toaster position="top-center" />
+        <h1 className="text-3xl font-bold mb-4 text-center sm:text-left">🧠 Algorithm Tracker</h1>
       
       <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
         <p className="text-yellow-800 font-medium">🔥 스트릭: {getStreak(problems)}일 연속 복습 중</p>
@@ -190,6 +193,7 @@ function App() {
         ))}
       </div>
     </div>
+    </>
   );
 }
 
